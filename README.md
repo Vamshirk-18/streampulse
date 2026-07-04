@@ -174,6 +174,4 @@ curl -X POST https://streampulse-cvmg.onrender.com/predict \
 ## 👨‍💻 Author
 **Vamshi** — [@Vamshirk-18](https://github.com/Vamshirk-18)
 
----
 
-> Built as part of Assignment 2 — AI Tools & ML Algorithms
