@@ -726,21 +726,54 @@ function simulateModel(data) {
 
 const resultColors = { High: '#10b981', Medium: '#f59e0b', Low: '#ef4444' };
 
-function runPrediction() {
+const API_URL = "https://streampulse-cvmg.onrender.com";
+
+async function runPrediction() {
+  const btn = document.querySelector('.btn-predict');
+  btn.textContent = 'Predicting...';
+  btn.disabled = true;
+
   const data = {
-    age:       +document.getElementById('f-age').value,
-    watch:     +document.getElementById('f-watch').value,
-    skip:      +document.getElementById('f-skip').value,
-    rating:    +document.getElementById('f-rating').value,
-    logins:    +document.getElementById('f-logins').value,
-    sub:        document.getElementById('f-sub').value,
-    diversity: +document.getElementById('f-diversity').value,
-    days:      +document.getElementById('f-days').value,
-    notifs:    +document.getElementById('f-notifs').value,
-    streak:    +document.getElementById('f-streak').value,
+    age:                      +document.getElementById('f-age').value,
+    weekly_watch_hours:       +document.getElementById('f-watch').value,
+    skip_rate:                +document.getElementById('f-skip').value,
+    avg_rating_given:         +document.getElementById('f-rating').value,
+    logins_per_week:          +document.getElementById('f-logins').value,
+    subscription_type:         document.getElementById('f-sub').value,
+    content_diversity_score:  +document.getElementById('f-diversity').value,
+    days_since_last_login:    +document.getElementById('f-days').value,
+    notifications_clicked:    +document.getElementById('f-notifs').value,
+    watch_streak_days:        +document.getElementById('f-streak').value,
   };
 
-  const result = simulateModel(data);
+  let result;
+  try {
+    const response = await fetch(`${API_URL}/predict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const json = await response.json();
+    result = {
+      label:      json.prediction,
+      confidence: json.confidence_pct,
+      probs:      json.probabilities
+    };
+  } catch (err) {
+    // Fallback to simulation if API is sleeping
+    console.warn('API unavailable, using simulation:', err);
+    const simData = {
+      watch: data.weekly_watch_hours, skip: data.skip_rate,
+      logins: data.logins_per_week, streak: data.watch_streak_days,
+      days: data.days_since_last_login, notifs: data.notifications_clicked,
+      sub: data.subscription_type, rating: data.avg_rating_given,
+      diversity: data.content_diversity_score
+    };
+    result = simulateModel(simData);
+  }
+
+  btn.textContent = 'Run Prediction →';
+  btn.disabled = false;
   const box    = document.getElementById('predictResult');
   const lbl    = document.getElementById('resultLabel');
   const conf   = document.getElementById('resultConf');
@@ -768,10 +801,10 @@ function runPrediction() {
   const ts    = new Date().toLocaleTimeString();
   row.innerHTML = `
     <td>${(predHistory.length+1).toString().padStart(3,'0')}</td>
-    <td>${data.watch}h</td>
-    <td>${data.skip}</td>
-    <td>${data.logins}</td>
-    <td>${data.sub}</td>
+    <td>${data.weekly_watch_hours}h</td>
+    <td>${data.skip_rate}</td>
+    <td>${data.logins_per_week}</td>
+    <td>${data.subscription_type}</td>
     <td><span class="badge ${result.label.toLowerCase()}">${result.label}</span></td>
   `;
   tbody.prepend(row);
@@ -784,7 +817,7 @@ function runPrediction() {
     icon:  icons[result.label],
     title: result.label === 'Low' ? 'Churn Risk Detected' :
            result.label === 'High' ? 'High Engagement Detected' : 'Medium Engagement',
-    desc:  `Manual prediction — ${data.watch}h/wk, skip:${data.skip}, ${data.sub} plan`,
+    desc:  `Manual prediction — ${data.weekly_watch_hours}h/wk, skip:${data.skip_rate}, ${data.subscription_type} plan`,
     time:  'just now'
   };
   NOTIFS.unshift(newNotif);
