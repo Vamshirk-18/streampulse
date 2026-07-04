@@ -23,7 +23,8 @@ import os
 app = Flask(__name__)
 
 # ── Load the saved ML model once at startup ──────────────────
-MODEL_PATH = '/home/claude/best_model.joblib'
+
+MODEL_PATH = os.path.join(os.path.dirname(__file__), 'best_model.joblib')
 model = joblib.load(MODEL_PATH)
 
 LABEL_MAP     = {0: 'Low', 1: 'Medium', 2: 'High'}
