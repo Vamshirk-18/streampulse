@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StreamPulse — Engagement Intelligence Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  /* ── Design Tokens ─────────────────────────────────────────
+     Palette: Deep space navy + electric cyan + warm amber
+     Signature: Animated "pulse" ring on the live metric cards
+     Type: 'Inter' for data, monospace for values
+  ──────────────────────────────────────────────────────────── */
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --bg-base:      #0a0e1a;
+    --bg-card:      #111827;
+    --bg-card2:     #1a2235;
+    --border:       #1e2d45;
+    --cyan:         #00d4ff;
+    --cyan-dim:     rgba(0,212,255,0.12);
+    --amber:        #f59e0b;
+    --amber-dim:    rgba(245,158,11,0.12);
+    --green:        #10b981;
+    --green-dim:    rgba(16,185,129,0.12);
+    --red:          #ef4444;
+    --red-dim:      rgba(239,68,68,0.12);
+    --text:         #e2e8f0;
+    --text-muted:   #64748b;
+    --text-dim:     #94a3b8;
+    --low-color:    #ef4444;
+    --med-color:    #f59e0b;
+    --high-color:   #10b981;
+    --font:         'Inter', sans-serif;
+    --mono:         'JetBrains Mono', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg-base);
+    color: var(--text);
+    font-family: var(--font);
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  /* ── Top Navigation ───────────────────────────────────────── */
+  nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 28px;
+    height: 56px;
+    background: rgba(10,14,26,0.95);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 100;
+    backdrop-filter: blur(12px);
+  }
+  .nav-brand {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 700; font-size: 17px; letter-spacing: -0.3px;
+  }
+  .brand-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--cyan);
+    box-shadow: 0 0 10px var(--cyan);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%,100% { opacity:1; transform: scale(1); }
+    50%      { opacity:0.5; transform: scale(1.4); }
+  }
+  .nav-right {
+    display: flex; align-items: center; gap: 16px;
+  }
+  .live-badge {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.8px;
+    color: var(--green); text-transform: uppercase;
+  }
+  .live-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green);
+    animation: pulse-dot 1.5s ease-in-out infinite;
+  }
+  .nav-time {
+    font-family: var(--mono); font-size: 12px; color: var(--text-muted);
+  }
+
+  /* ── Layout ───────────────────────────────────────────────── */
+  main { padding: 24px 28px; max-width: 1400px; margin: 0 auto; }
+
+  .page-title {
+    font-size: 13px; font-weight: 500; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 20px;
+  }
+
+  /* ── Stat Cards ───────────────────────────────────────────── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px; margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    position: relative; overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .stat-card:hover { border-color: var(--cyan); }
+  .stat-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  }
+  .stat-card.cyan::before  { background: var(--cyan); }
+  .stat-card.amber::before { background: var(--amber); }
+  .stat-card.green::before { background: var(--green); }
+  .stat-card.red::before   { background: var(--red); }
+
+  .stat-label {
+    font-size: 11px; font-weight: 500; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px;
+  }
+  .stat-value {
+    font-family: var(--mono); font-size: 32px; font-weight: 600;
+    line-height: 1; margin-bottom: 6px;
+  }
+  .stat-card.cyan  .stat-value { color: var(--cyan); }
+  .stat-card.amber .stat-value { color: var(--amber); }
+  .stat-card.green .stat-value { color: var(--green); }
+  .stat-card.red   .stat-value { color: var(--red); }
+  .stat-sub {
+    font-size: 12px; color: var(--text-muted);
+  }
+  .stat-pulse {
+    position: absolute; right: 18px; top: 50%;
+    transform: translateY(-50%);
+    width: 36px; height: 36px;
+  }
+  .pulse-ring {
+    position: absolute; inset: 0;
+    border-radius: 50%; border: 2px solid currentColor;
+    opacity: 0.3;
+    animation: expand 2.5s ease-out infinite;
+  }
+  .pulse-ring:nth-child(2) { animation-delay: 0.8s; }
+  .stat-card.cyan  .pulse-ring { color: var(--cyan); }
+  .stat-card.amber .pulse-ring { color: var(--amber); }
+  .stat-card.green .pulse-ring { color: var(--green); }
+  .stat-card.red   .pulse-ring { color: var(--red); }
+  @keyframes expand {
+    0%   { transform: scale(0.3); opacity: 0.6; }
+    100% { transform: scale(1.8); opacity: 0; }
+  }
+
+  /* ── Grid Layout ──────────────────────────────────────────── */
+  .grid-2 {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 16px; margin-bottom: 24px;
+  }
+  .grid-3col {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px; margin-bottom: 24px;
+  }
+  .span2 { grid-column: span 2; }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .card-title {
+    font-size: 12px; font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.9px;
+    margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card-title-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--cyan);
+  }
+
+  /* ── Charts ───────────────────────────────────────────────── */
+  .chart-wrap { position: relative; height: 200px; }
+  .chart-wrap-tall { position: relative; height: 240px; }
+
+  /* ── Engagement Distribution Bars ────────────────────────── */
+  .dist-bars { display: flex; flex-direction: column; gap: 14px; }
+  .dist-row { display: flex; flex-direction: column; gap: 5px; }
+  .dist-top {
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .dist-name { font-size: 13px; font-weight: 500; }
+  .dist-count { font-family: var(--mono); font-size: 12px; color: var(--text-muted); }
+  .dist-bar-bg {
+    height: 8px; border-radius: 99px;
+    background: var(--bg-card2);
+    overflow: hidden;
+  }
+  .dist-bar-fill {
+    height: 100%; border-radius: 99px;
+    transition: width 1s ease;
+  }
+
+  /* ── Notification Feed ────────────────────────────────────── */
+  .notif-feed {
+    display: flex; flex-direction: column; gap: 10px;
+    max-height: 300px; overflow-y: auto;
+  }
+  .notif-feed::-webkit-scrollbar { width: 4px; }
+  .notif-feed::-webkit-scrollbar-track { background: transparent; }
+  .notif-feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .notif-item {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 12px; border-radius: 8px;
+    background: var(--bg-card2);
+    border-left: 3px solid transparent;
+    animation: slide-in 0.4s ease;
+  }
+  @keyframes slide-in {
+    from { transform: translateX(-12px); opacity: 0; }
+    to   { transform: translateX(0);     opacity: 1; }
+  }
+  .notif-item.high   { border-left-color: var(--green); }
+  .notif-item.medium { border-left-color: var(--amber); }
+  .notif-item.low    { border-left-color: var(--red); }
+
+  .notif-icon { font-size: 16px; margin-top: 1px; }
+  .notif-body { flex: 1; }
+  .notif-title { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+  .notif-desc  { font-size: 11px; color: var(--text-muted); }
+  .notif-time  { font-family: var(--mono); font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+
+  .badge {
+    display: inline-flex; align-items: center;
+    padding: 2px 8px; border-radius: 99px;
+    font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.6px;
+  }
+  .badge.high   { background: var(--green-dim);  color: var(--green); }
+  .badge.medium { background: var(--amber-dim);  color: var(--amber); }
+  .badge.low    { background: var(--red-dim);    color: var(--red); }
+
+  /* ── Predict Form ─────────────────────────────────────────── */
+  .form-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 12px; margin-bottom: 16px;
+  }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-group label {
+    font-size: 11px; font-weight: 500; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.6px;
+  }
+  .form-group input,
+  .form-group select {
+    background: var(--bg-card2);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text);
+    font-family: var(--mono); font-size: 13px;
+    padding: 8px 12px;
+    transition: border-color 0.2s;
+    outline: none;
+  }
+  .form-group input:focus,
+  .form-group select:focus { border-color: var(--cyan); }
+  .form-group select option { background: var(--bg-card); }
+
+  .btn-predict {
+    width: 100%; padding: 12px;
+    background: var(--cyan); color: #0a0e1a;
+    font-family: var(--font); font-size: 14px; font-weight: 700;
+    border: none; border-radius: 8px; cursor: pointer;
+    letter-spacing: 0.3px;
+    transition: opacity 0.2s, transform 0.1s;
+  }
+  .btn-predict:hover  { opacity: 0.9; }
+  .btn-predict:active { transform: scale(0.98); }
+
+  /* ── Prediction Result ────────────────────────────────────── */
+  .predict-result {
+    margin-top: 16px; padding: 16px;
+    background: var(--bg-card2); border-radius: 10px;
+    border: 1px solid var(--border);
+    display: none;
+  }
+  .predict-result.show { display: block; animation: slide-in 0.3s ease; }
+  .result-top {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .result-label { font-size: 12px; color: var(--text-muted); }
+  .result-prediction {
+    font-family: var(--mono); font-size: 22px; font-weight: 700;
+  }
+  .result-prediction.high   { color: var(--green); }
+  .result-prediction.medium { color: var(--amber); }
+  .result-prediction.low    { color: var(--red); }
+
+  .prob-bars { display: flex; flex-direction: column; gap: 8px; }
+  .prob-row  { display: flex; align-items: center; gap: 10px; }
+  .prob-name { font-size: 11px; width: 52px; color: var(--text-dim); }
+  .prob-bg   { flex: 1; height: 6px; border-radius: 99px; background: var(--bg-base); }
+  .prob-fill { height: 100%; border-radius: 99px; transition: width 0.8s ease; }
+  .prob-val  { font-family: var(--mono); font-size: 11px; width: 38px; text-align: right; color: var(--text-muted); }
+
+  /* ── Recent Predictions Table ─────────────────────────────── */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead th {
+    text-align: left; padding: 8px 12px;
+    font-size: 10px; font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.8px;
+    border-bottom: 1px solid var(--border);
+  }
+  tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(30,45,69,0.5);
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  tbody tr:hover td { background: var(--bg-card2); }
+  tbody tr:last-child td { border-bottom: none; }
+
+  /* ── Responsive ───────────────────────────────────────────── */
+  @media (max-width: 900px) {
+    .stats-row  { grid-template-columns: 1fr 1fr; }
+    .grid-2     { grid-template-columns: 1fr; }
+    .grid-3col  { grid-template-columns: 1fr; }
+    .span2      { grid-column: span 1; }
+    .form-grid  { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Navigation -->
+<nav>
+  <div class="nav-brand">
+    <div class="brand-dot"></div>
+    StreamPulse
+  </div>
+  <div class="nav-right">
+    <div class="live-badge"><div class="live-dot"></div> Live</div>
+    <div class="nav-time" id="clock">--:--:--</div>
+  </div>
+</nav>
+
+<main>
+  <div class="page-title">Engagement Intelligence Dashboard</div>
+
+  <!-- Stat Cards -->
+  <div class="stats-row">
+    <div class="stat-card cyan">
+      <div class="stat-label">Total Users</div>
+      <div class="stat-value" id="stat-total">7,500</div>
+      <div class="stat-sub">Active in dataset</div>
+      <div class="stat-pulse"><div class="pulse-ring"></div><div class="pulse-ring"></div></div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-label">High Engagement</div>
+      <div class="stat-value" id="stat-high">2,500</div>
+      <div class="stat-sub">33.3% of users</div>
+      <div class="stat-pulse"><div class="pulse-ring"></div><div class="pulse-ring"></div></div>
+    </div>
+    <div class="stat-card amber">
+      <div class="stat-label">Medium Engagement</div>
+      <div class="stat-value" id="stat-med">2,500</div>
+      <div class="stat-sub">33.3% of users</div>
+      <div class="stat-pulse"><div class="pulse-ring"></div><div class="pulse-ring"></div></div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-label">Low Engagement</div>
+      <div class="stat-value" id="stat-low">2,500</div>
+      <div class="stat-sub">33.3% — needs attention</div>
+      <div class="stat-pulse"><div class="pulse-ring"></div><div class="pulse-ring"></div></div>
+    </div>
+  </div>
+
+  <!-- Charts Row -->
+  <div class="grid-2" style="margin-bottom:24px;">
+    <div class="card">
+      <div class="card-title"><div class="card-title-dot"></div>Weekly Watch Hours Trend</div>
+      <div class="chart-wrap"><canvas id="lineChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><div class="card-title-dot"></div>Engagement Distribution</div>
+      <div class="dist-bars" style="margin-top:8px;">
+        <div class="dist-row">
+          <div class="dist-top">
+            <span class="dist-name" style="color:var(--green)">High</span>
+            <span class="dist-count">2,500 users</span>
+          </div>
+          <div class="dist-bar-bg">
+            <div class="dist-bar-fill" style="width:33%;background:var(--green)"></div>
+          </div>
+        </div>
+        <div class="dist-row">
+          <div class="dist-top">
+            <span class="dist-name" style="color:var(--amber)">Medium</span>
+            <span class="dist-count">2,500 users</span>
+          </div>
+          <div class="dist-bar-bg">
+            <div class="dist-bar-fill" style="width:33%;background:var(--amber)"></div>
+          </div>
+        </div>
+        <div class="dist-row">
+          <div class="dist-top">
+            <span class="dist-name" style="color:var(--red)">Low</span>
+            <span class="dist-count">2,500 users</span>
+          </div>
+          <div class="dist-bar-bg">
+            <div class="dist-bar-fill" style="width:33%;background:var(--red)"></div>
+          </div>
+        </div>
+        <div style="margin-top:16px;">
+          <div class="card-title"><div class="card-title-dot"></div>Skip Rate vs Watch Hours</div>
+          <div class="chart-wrap" style="height:150px;"><canvas id="scatterChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Middle Row -->
+  <div class="grid-3col">
+    <!-- Subscription Breakdown -->
+    <div class="card">
+      <div class="card-title"><div class="card-title-dot"></div>Subscription Types</div>
+      <div class="chart-wrap-tall"><canvas id="doughnutChart"></canvas></div>
+    </div>
+
+    <!-- Notification Feed -->
+    <div class="card">
+      <div class="card-title"><div class="card-title-dot"></div>Trigger Feed</div>
+      <div class="notif-feed" id="notifFeed">
+        <!-- populated by JS -->
+      </div>
+    </div>
+
+    <!-- Model Performance -->
+    <div class="card">
+      <div class="card-title"><div class="card-title-dot"></div>Model Performance</div>
+      <div class="chart-wrap-tall"><canvas id="radarChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Predict + Table Row -->
+  <div class="grid-2">
+    <!-- Predict Form -->
+    <div class="card">
+      <div class="card-title"><div class="card-title-dot"></div>Predict User Engagement</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Age</label>
+          <input type="number" id="f-age" value="28" min="16" max="65">
+        </div>
+        <div class="form-group">
+          <label>Weekly Watch Hours</label>
+          <input type="number" id="f-watch" value="12.5" step="0.5" min="0" max="150">
+        </div>
+        <div class="form-group">
+          <label>Skip Rate (0–1)</label>
+          <input type="number" id="f-skip" value="0.25" step="0.01" min="0" max="1">
+        </div>
+        <div class="form-group">
+          <label>Avg Rating Given</label>
+          <input type="number" id="f-rating" value="3.8" step="0.1" min="1" max="5">
+        </div>
+        <div class="form-group">
+          <label>Logins / Week</label>
+          <input type="number" id="f-logins" value="5" min="0" max="50">
+        </div>
+        <div class="form-group">
+          <label>Subscription Type</label>
+          <select id="f-sub">
+            <option value="Free">Free</option>
+            <option value="Basic">Basic</option>
+            <option value="Premium" selected>Premium</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Content Diversity (0–1)</label>
+          <input type="number" id="f-diversity" value="0.7" step="0.05" min="0" max="1">
+        </div>
+        <div class="form-group">
+          <label>Days Since Last Login</label>
+          <input type="number" id="f-days" value="3" min="0" max="60">
+        </div>
+        <div class="form-group">
+          <label>Notifications Clicked</label>
+          <input type="number" id="f-notifs" value="5" min="0" max="50">
+        </div>
+        <div class="form-group">
+          <label>Watch Streak (days)</label>
+          <input type="number" id="f-streak" value="10" min="0" max="30">
+        </div>
+      </div>
+      <button class="btn-predict" onclick="runPrediction()">Run Prediction →</button>
+
+      <div class="predict-result" id="predictResult">
+        <div class="result-top">
+          <div>
+            <div class="result-label">Predicted Engagement Level</div>
+            <div class="result-prediction" id="resultLabel">—</div>
+          </div>
+          <div style="text-align:right;">
+            <div class="result-label">Confidence</div>
+            <div style="font-family:var(--mono);font-size:20px;color:var(--cyan)" id="resultConf">—</div>
+          </div>
+        </div>
+        <div class="prob-bars" id="probBars"></div>
+      </div>
+    </div>
+
+    <!-- Recent Predictions Table -->
+    <div class="card">
+      <div class="card-title"><div class="card-title-dot"></div>Recent Predictions</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Watch Hrs</th>
+              <th>Skip Rate</th>
+              <th>Logins</th>
+              <th>Sub Type</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody id="predTable">
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ── Clock ──────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toTimeString().slice(0,8);
+}
+setInterval(updateClock, 1000); updateClock();
+
+// ── Line Chart: Weekly Watch Hours ────────────────────────────
+const weeks = ['W1','W2','W3','W4','W5','W6','W7','W8'];
+new Chart(document.getElementById('lineChart'), {
+  type: 'line',
+  data: {
+    labels: weeks,
+    datasets: [
+      { label:'High', data:[14,15.5,16,15,17,18,17.5,19],
+        borderColor:'#10b981', backgroundColor:'rgba(16,185,129,0.08)',
+        tension:0.4, fill:true, pointRadius:3 },
+      { label:'Medium', data:[8,8.5,7.5,9,8,9.5,9,10],
+        borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.08)',
+        tension:0.4, fill:true, pointRadius:3 },
+      { label:'Low', data:[3,2.5,3.5,2,3,2.5,2,1.5],
+        borderColor:'#ef4444', backgroundColor:'rgba(239,68,68,0.08)',
+        tension:0.4, fill:true, pointRadius:3 },
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:false,
+    plugins: { legend:{ labels:{ color:'#94a3b8', font:{size:11} } } },
+    scales: {
+      x: { ticks:{color:'#64748b',font:{size:10}}, grid:{color:'#1e2d45'} },
+      y: { ticks:{color:'#64748b',font:{size:10}}, grid:{color:'#1e2d45'} }
+    }
+  }
+});
+
+// ── Doughnut Chart: Subscription ──────────────────────────────
+new Chart(document.getElementById('doughnutChart'), {
+  type: 'doughnut',
+  data: {
+    labels: ['Free (50%)', 'Basic (30%)', 'Premium (20%)'],
+    datasets: [{
+      data: [50, 30, 20],
+      backgroundColor: ['#1e2d45','#f59e0b','#00d4ff'],
+      borderColor: '#111827', borderWidth: 2,
+    }]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:false,
+    cutout: '65%',
+    plugins: {
+      legend: { position:'bottom', labels:{ color:'#94a3b8', font:{size:11}, padding:12 } }
+    }
+  }
+});
+
+// ── Scatter Chart: Skip Rate vs Watch Hours ───────────────────
+const scatterData = {
+  datasets: [
+    { label:'High', data: Array.from({length:40}, () => ({
+        x: +(Math.random()*15+8).toFixed(1),
+        y: +(Math.random()*0.3).toFixed(2) })),
+      backgroundColor:'rgba(16,185,129,0.6)', pointRadius:4 },
+    { label:'Medium', data: Array.from({length:40}, () => ({
+        x: +(Math.random()*8+4).toFixed(1),
+        y: +(Math.random()*0.4+0.2).toFixed(2) })),
+      backgroundColor:'rgba(245,158,11,0.6)', pointRadius:4 },
+    { label:'Low', data: Array.from({length:40}, () => ({
+        x: +(Math.random()*4).toFixed(1),
+        y: +(Math.random()*0.4+0.55).toFixed(2) })),
+      backgroundColor:'rgba(239,68,68,0.6)', pointRadius:4 },
+  ]
+};
+new Chart(document.getElementById('scatterChart'), {
+  type: 'scatter', data: scatterData,
+  options: {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{ labels:{ color:'#94a3b8', font:{size:10} } } },
+    scales: {
+      x: { title:{display:true,text:'Watch Hours',color:'#64748b',font:{size:10}},
+           ticks:{color:'#64748b',font:{size:9}}, grid:{color:'#1e2d45'} },
+      y: { title:{display:true,text:'Skip Rate',color:'#64748b',font:{size:10}},
+           ticks:{color:'#64748b',font:{size:9}}, grid:{color:'#1e2d45'} }
+    }
+  }
+});
+
+// ── Radar Chart: Model Metrics ────────────────────────────────
+new Chart(document.getElementById('radarChart'), {
+  type: 'radar',
+  data: {
+    labels: ['F1-Score','Precision','Recall','Accuracy','CV Score'],
+    datasets: [
+      { label:'Random Forest', data:[95.4,95.4,95.4,95.4,95.4],
+        borderColor:'#00d4ff', backgroundColor:'rgba(0,212,255,0.1)',
+        pointBackgroundColor:'#00d4ff', pointRadius:4 },
+      { label:'Logistic Reg.', data:[87.5,87.6,87.4,87.4,85],
+        borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.08)',
+        pointBackgroundColor:'#f59e0b', pointRadius:4 },
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{ labels:{ color:'#94a3b8', font:{size:11} } } },
+    scales: {
+      r: {
+        min:80, max:100,
+        ticks:{ color:'#64748b', font:{size:9}, backdropColor:'transparent' },
+        grid:{ color:'#1e2d45' },
+        pointLabels:{ color:'#94a3b8', font:{size:10} }
+      }
+    }
+  }
+});
+
+// ── Notification Feed ──────────────────────────────────────────
+const NOTIFS = [
+  { level:'low',    icon:'🔴', title:'Churn Risk Alert',   desc:'User #4821 — 45 days inactive, Free tier, high skip rate', time:'2m ago' },
+  { level:'high',   icon:'🟢', title:'High Engagement',    desc:'User #1034 — 19h/week, Premium, 14-day streak',           time:'5m ago' },
+  { level:'medium', icon:'🟡', title:'Engagement Drop',    desc:'User #2291 — dropped from High → Medium this week',       time:'9m ago' },
+  { level:'low',    icon:'🔴', title:'Churn Risk Alert',   desc:'User #3390 — skip rate 0.91, only 1 login this week',     time:'14m ago' },
+  { level:'high',   icon:'🟢', title:'Re-engagement Win',  desc:'User #0871 — returned after 20 days, now Medium',         time:'21m ago' },
+  { level:'medium', icon:'🟡', title:'Watch Time Decline', desc:'User #5512 — avg watch hrs fell 40% vs last week',        time:'30m ago' },
+];
+
+function renderNotifs() {
+  const feed = document.getElementById('notifFeed');
+  feed.innerHTML = NOTIFS.map(n => `
+    <div class="notif-item ${n.level}">
+      <div class="notif-icon">${n.icon}</div>
+      <div class="notif-body">
+        <div class="notif-title">
+          ${n.title}
+          <span class="badge ${n.level}" style="margin-left:6px">${n.level}</span>
+        </div>
+        <div class="notif-desc">${n.desc}</div>
+      </div>
+      <div class="notif-time">${n.time}</div>
+    </div>
+  `).join('');
+}
+renderNotifs();
+
+// ── Prediction Logic (simulates the Flask API) ─────────────────
+const predHistory = [];
+
+function simulateModel(data) {
+  // Mirror the engineered feature logic from app.py
+  const engRatio    = data.watch / (data.skip + 0.01);
+  const actScore    = data.logins * 0.5 + data.streak * 0.5;
+  const subMap      = { Free: 0, Basic: 1, Premium: 2 };
+  const subNum      = subMap[data.sub];
+  const premWatch   = subNum * data.watch;
+  const inactive    = data.days > 14 ? 1 : 0;
+  const notifRate   = data.notifs / (data.logins + 1);
+
+  const score =
+    data.watch * 0.35
+    + actScore  * 0.25
+    - data.skip * 8
+    + engRatio  * 0.05
+    + premWatch * 0.08
+    + notifRate * 0.5
+    + data.rating * 0.4
+    - inactive  * 2
+    + data.diversity * 3;
+
+  let low, med, high;
+  if      (score > 18)  { high=0.75+Math.random()*0.2; med=(1-high)*0.7; low=1-high-med; }
+  else if (score > 8)   { med=0.60+Math.random()*0.2;  high=(1-med)*0.4; low=1-med-high; }
+  else                  { low=0.65+Math.random()*0.25; med=(1-low)*0.5;  high=1-low-med; }
+
+  [low, med, high] = [low, med, high].map(v => Math.max(0.01, Math.min(0.97, v)));
+  const total = low + med + high;
+  [low, med, high] = [low/total, med/total, high/total];
+
+  const maxVal = Math.max(low, med, high);
+  const label  = maxVal === high ? 'High' : maxVal === med ? 'Medium' : 'Low';
+  return { label, confidence: (maxVal*100).toFixed(1),
+           probs: { Low: (low*100).toFixed(1), Medium: (med*100).toFixed(1), High: (high*100).toFixed(1) } };
+}
+
+const resultColors = { High: '#10b981', Medium: '#f59e0b', Low: '#ef4444' };
+
+function runPrediction() {
+  const data = {
+    age:       +document.getElementById('f-age').value,
+    watch:     +document.getElementById('f-watch').value,
+    skip:      +document.getElementById('f-skip').value,
+    rating:    +document.getElementById('f-rating').value,
+    logins:    +document.getElementById('f-logins').value,
+    sub:        document.getElementById('f-sub').value,
+    diversity: +document.getElementById('f-diversity').value,
+    days:      +document.getElementById('f-days').value,
+    notifs:    +document.getElementById('f-notifs').value,
+    streak:    +document.getElementById('f-streak').value,
+  };
+
+  const result = simulateModel(data);
+  const box    = document.getElementById('predictResult');
+  const lbl    = document.getElementById('resultLabel');
+  const conf   = document.getElementById('resultConf');
+  const bars   = document.getElementById('probBars');
+
+  lbl.textContent = result.label;
+  lbl.className   = 'result-prediction ' + result.label.toLowerCase();
+  conf.textContent = result.confidence + '%';
+
+  bars.innerHTML = ['Low','Medium','High'].map(lvl => `
+    <div class="prob-row">
+      <div class="prob-name">${lvl}</div>
+      <div class="prob-bg">
+        <div class="prob-fill" style="width:${result.probs[lvl]}%;background:${resultColors[lvl]}"></div>
+      </div>
+      <div class="prob-val">${result.probs[lvl]}%</div>
+    </div>
+  `).join('');
+
+  box.classList.add('show');
+
+  // Add to table
+  const tbody = document.getElementById('predTable');
+  const row   = document.createElement('tr');
+  const ts    = new Date().toLocaleTimeString();
+  row.innerHTML = `
+    <td>${(predHistory.length+1).toString().padStart(3,'0')}</td>
+    <td>${data.watch}h</td>
+    <td>${data.skip}</td>
+    <td>${data.logins}</td>
+    <td>${data.sub}</td>
+    <td><span class="badge ${result.label.toLowerCase()}">${result.label}</span></td>
+  `;
+  tbody.prepend(row);
+  predHistory.push(result);
+
+  // Add to notification feed
+  const icons = { High:'🟢', Medium:'🟡', Low:'🔴' };
+  const newNotif = {
+    level: result.label.toLowerCase(),
+    icon:  icons[result.label],
+    title: result.label === 'Low' ? 'Churn Risk Detected' :
+           result.label === 'High' ? 'High Engagement Detected' : 'Medium Engagement',
+    desc:  `Manual prediction — ${data.watch}h/wk, skip:${data.skip}, ${data.sub} plan`,
+    time:  'just now'
+  };
+  NOTIFS.unshift(newNotif);
+  if (NOTIFS.length > 8) NOTIFS.pop();
+  renderNotifs();
+}
+</script>
+</body>
+</html>
